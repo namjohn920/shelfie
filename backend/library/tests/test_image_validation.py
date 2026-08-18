@@ -7,6 +7,7 @@ from PIL import Image
 from library.services.image_validation import (
     ImageMetadata,
     InvalidImageError,
+    decode_uploaded_image,
     validate_uploaded_image,
 )
 
@@ -42,3 +43,23 @@ class ImageValidationTests(SimpleTestCase):
 
         with self.assertRaises(InvalidImageError):
             validate_uploaded_image(upload)
+
+    def test_preserves_stored_metadata_but_returns_exif_upright_pixels(self):
+        image_bytes = BytesIO()
+        exif = Image.Exif()
+        exif[274] = 6
+        Image.new('RGB', (20, 10), color='navy').save(
+            image_bytes,
+            format='JPEG',
+            exif=exif,
+        )
+        upload = SimpleUploadedFile(
+            'rotated-bookshelf.jpg',
+            image_bytes.getvalue(),
+            content_type='image/jpeg',
+        )
+
+        decoded = decode_uploaded_image(upload)
+
+        self.assertEqual((decoded.metadata.width, decoded.metadata.height), (20, 10))
+        self.assertEqual(decoded.upright_image.size, (10, 20))

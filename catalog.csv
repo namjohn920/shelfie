@@ -1,0 +1,152 @@
+catalog_id,title,author,alternate_titles,author_aliases,edition,contains_titles,ambiguity_tags
+CAT001,Harry Potter and the Philosopher's Stone,J. K. Rowling,Harry Potter and the Sorcerer's Stone,J.K. Rowling|Joanne Rowling,UK paperback,,publication_title|author_forms
+CAT002,Harry Potter and the Sorcerer's Stone,J. K. Rowling,Harry Potter and the Philosopher's Stone,J.K. Rowling|Joanne Rowling,US paperback,,publication_title|separate_edition|author_forms
+CAT003,Harry Potter and the Chamber of Secrets,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT004,Harry Potter and the Prisoner of Azkaban,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT005,Harry Potter and the Goblet of Fire,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT006,Harry Potter and the Order of the Phoenix,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT007,Harry Potter and the Half-Blood Prince,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT008,Harry Potter and the Deathly Hallows,J. K. Rowling,,J.K. Rowling|Joanne Rowling,Paperback,,author_forms
+CAT009,The Hobbit,J. R. R. Tolkien,There and Back Again,J.R.R. Tolkien|JRR Tolkien,Paperback,,separate_edition|author_forms
+CAT010,The Hobbit,J. R. R. Tolkien,There and Back Again,J.R.R. Tolkien|JRR Tolkien,Illustrated edition,,separate_edition|author_forms
+CAT011,The Fellowship of the Ring,J. R. R. Tolkien,The Lord of the Rings Part One,J.R.R. Tolkien|JRR Tolkien,Paperback,,contained_volume|author_forms
+CAT012,The Two Towers,J. R. R. Tolkien,The Lord of the Rings Part Two,J.R.R. Tolkien|JRR Tolkien,Paperback,,contained_volume|author_forms
+CAT013,The Return of the King,J. R. R. Tolkien,The Lord of the Rings Part Three,J.R.R. Tolkien|JRR Tolkien,Paperback,,contained_volume|author_forms
+CAT014,The Lord of the Rings,J. R. R. Tolkien,The Lord of the Rings Trilogy,J.R.R. Tolkien|JRR Tolkien,One-volume omnibus,The Fellowship of the Ring|The Two Towers|The Return of the King,omnibus|author_forms
+CAT015,The Silmarillion,J. R. R. Tolkien,,J.R.R. Tolkien|JRR Tolkien,Paperback,,author_forms
+CAT016,Dune,Frank Herbert,,,Paperback,,substring_title
+CAT017,Dune Messiah,Frank Herbert,,,Paperback,,substring_title
+CAT018,Children of Dune,Frank Herbert,,,Paperback,,substring_title
+CAT019,God Emperor of Dune,Frank Herbert,,,Paperback,,substring_title
+CAT020,The Hitchhiker's Guide to the Galaxy,Douglas Adams,Hitchhiker's Guide to the Galaxy,,Paperback,,contained_volume
+CAT021,The Restaurant at the End of the Universe,Douglas Adams,,,Paperback,,contained_volume
+CAT022,"Life, the Universe and Everything",Douglas Adams,,,Paperback,,contained_volume
+CAT023,So Long and Thanks for All the Fish,Douglas Adams,"So Long, and Thanks for All the Fish",,Paperback,,contained_volume
+CAT024,Mostly Harmless,Douglas Adams,,,Paperback,,contained_volume
+CAT025,The Ultimate Hitchhiker's Guide to the Galaxy,Douglas Adams,The Hitchhiker's Guide Complete Collection,,Omnibus,"The Hitchhiker's Guide to the Galaxy|The Restaurant at the End of the Universe|Life, the Universe and Everything|So Long and Thanks for All the Fish|Mostly Harmless",omnibus
+CAT026,Pride and Prejudice,Jane Austen,,,Penguin Classics,,separate_edition
+CAT027,Pride and Prejudice,Jane Austen,,,Oxford World's Classics,,separate_edition
+CAT028,Sense and Sensibility,Jane Austen,,,,,
+CAT029,Emma,Jane Austen,,,,,
+CAT030,Persuasion,Jane Austen,,,,,
+CAT031,Jane Eyre,Charlotte Brontë,,Charlotte Bronte|Currer Bell,Paperback,,translated_title|author_forms
+CAT032,Wuthering Heights,Emily Brontë,,Emily Bronte|Ellis Bell,Paperback,,translated_title|author_forms
+CAT033,The Great Gatsby,F. Scott Fitzgerald,,F Scott Fitzgerald|Francis Scott Fitzgerald,Paperback,,author_forms
+CAT034,The Catcher in the Rye,J. D. Salinger,,J.D. Salinger|Jerome David Salinger,Paperback,,author_forms
+CAT035,To Kill a Mockingbird,Harper Lee,,,,,
+CAT036,Nineteen Eighty-Four,George Orwell,1984|Nineteen Eighty Four,Eric Arthur Blair,Paperback,,publication_title|author_forms
+CAT037,Animal Farm,George Orwell,A Fairy Story,Eric Arthur Blair,Paperback,,author_forms
+CAT038,Brave New World,Aldous Huxley,,,,,
+CAT039,Fahrenheit 451,Ray Bradbury,Fahrenheit Four Fifty-One,,Paperback,,publication_title
+CAT040,The Handmaid's Tale,Margaret Atwood,Handmaids Tale,,Paperback,,substring_title
+CAT041,The Testaments,Margaret Atwood,,,,,
+CAT042,It,Stephen King,,,Paperback,,substring_title
+CAT043,It Ends with Us,Colleen Hoover,,,Paperback,,substring_title
+CAT044,It Starts with Us,Colleen Hoover,,,Paperback,,substring_title
+CAT045,The Shining,Stephen King,,,,,
+CAT046,Carrie,Stephen King,,,,,
+CAT047,The Stand,Stephen King,,,Complete and uncut edition,,separate_edition
+CAT048,Beloved,Toni Morrison,,,,,
+CAT049,Home,Toni Morrison,,,Hardcover,,shared_title
+CAT050,Home,Marilynne Robinson,,,Paperback,,shared_title
+CAT051,The Night Watch,Sarah Waters,,,Paperback,,shared_title
+CAT052,The Night Watch,Sergei Lukyanenko,Night Watch,Sergey Lukyanenko,English translation,,shared_title|translated_title|author_forms
+CAT053,The Power,Naomi Alderman,,,Paperback,,shared_title
+CAT054,The Power,Rhonda Byrne,,,Hardcover,,shared_title
+CAT055,The Guest List,Lucy Foley,,,Paperback,,shared_title
+CAT056,The Guest List,Melissa Hill,,,Paperback,,shared_title
+CAT057,The Girl on the Train,Paula Hawkins,,,,,
+CAT058,Gone Girl,Gillian Flynn,,,,,
+CAT059,The Silent Patient,Alex Michaelides,,,,,
+CAT060,The Thursday Murder Club,Richard Osman,,,,,
+CAT061,The Da Vinci Code,Dan Brown,Da Vinci Code,,Paperback,,substring_title
+CAT062,Angels & Demons,Dan Brown,Angels and Demons,,Paperback,,
+CAT063,The Name of the Rose,Umberto Eco,Il nome della rosa,,English translation,,translated_title
+CAT064,The Shadow of the Wind,Carlos Ruiz Zafón,La sombra del viento,Carlos Ruiz Zafon,English translation,,translated_title|author_forms
+CAT065,The Book Thief,Markus Zusak,Die Bücherdiebin,,English translation,,translated_title
+CAT066,The Kite Runner,Khaled Hosseini,,,,,
+CAT067,A Thousand Splendid Suns,Khaled Hosseini,,,,,
+CAT068,Life of Pi,Yann Martel,,,,,
+CAT069,The Road,Cormac McCarthy,,,,,
+CAT070,No Country for Old Men,Cormac McCarthy,,,,,
+CAT071,Normal People,Sally Rooney,,,,,
+CAT072,Conversations with Friends,Sally Rooney,,,,,
+CAT073,Where the Crawdads Sing,Delia Owens,,,,,
+CAT074,Little Fires Everywhere,Celeste Ng,,,,,
+CAT075,Educated,Tara Westover,,,,,
+CAT076,Becoming,Michelle Obama,,,,,
+CAT077,Steve Jobs,Walter Isaacson,,,,,
+CAT078,Sapiens,Yuval Noah Harari,A Brief History of Humankind,,Paperback,,substring_title
+CAT079,Homo Deus,Yuval Noah Harari,A Brief History of Tomorrow,,Paperback,,
+CAT080,Atomic Habits,James Clear,Tiny Changes Remarkable Results,,Hardcover,,
+CAT081,"Thinking, Fast and Slow",Daniel Kahneman,Thinking Fast and Slow,,Paperback,,
+CAT082,Quiet,Susan Cain,The Power of Introverts in a World That Can't Stop Talking,,Paperback,,
+CAT083,Outliers,Malcolm Gladwell,The Story of Success,,Paperback,,
+CAT084,Blink,Malcolm Gladwell,The Power of Thinking Without Thinking,,Paperback,,
+CAT085,Freakonomics,Steven D. Levitt and Stephen J. Dubner,,Steven Levitt and Stephen Dubner|Levitt and Dubner,Paperback,,author_forms
+CAT086,The Lean Startup,Eric Ries,,,,,
+CAT087,Zero to One,Peter Thiel with Blake Masters,,Peter Thiel|Blake Masters,Paperback,,author_forms
+CAT088,Clean Code,Robert C. Martin,A Handbook of Agile Software Craftsmanship,Uncle Bob|Robert Martin,Paperback,,author_forms
+CAT089,The Pragmatic Programmer,Andrew Hunt and David Thomas,From Journeyman to Master,Andy Hunt and Dave Thomas|Hunt and Thomas,Second edition,,author_forms
+CAT090,The Design of Everyday Things,Don Norman,The Psychology of Everyday Things,Donald Norman,Revised edition,,publication_title|author_forms
+CAT091,Code Complete,Steve McConnell,A Practical Handbook of Software Construction,Steven McConnell,Second edition,,author_forms
+CAT092,The Mythical Man-Month,Frederick P. Brooks Jr.,The Mythical Man Month|Essays on Software Engineering,Fred Brooks|Frederick Brooks,Anniversary edition,,author_forms
+CAT093,Algorithms to Live By,Brian Christian and Tom Griffiths,,Christian and Griffiths,Paperback,,author_forms
+CAT094,Deep Work,Cal Newport,,,,,
+CAT095,So Good They Can't Ignore You,Cal Newport,,,,,
+CAT096,Grit,Angela Duckworth,The Power of Passion and Perseverance,,Paperback,,
+CAT097,Flow,Mihaly Csikszentmihalyi,The Psychology of Optimal Experience,Mihály Csíkszentmihályi,Paperback,,translated_title|author_forms
+CAT098,Man's Search for Meaning,Viktor E. Frankl,Mans Search for Meaning,Viktor Frankl,Paperback,,author_forms
+CAT099,The Alchemist,Paulo Coelho,O Alquimista,,English translation,,translated_title
+CAT100,The Little Prince,Antoine de Saint-Exupéry,Le Petit Prince,Antoine de Saint Exupery|Saint-Exupéry,English translation,,translated_title|author_forms
+CAT101,The Stranger,Albert Camus,L'Étranger|The Outsider,,English translation,,publication_title|translated_title
+CAT102,One Hundred Years of Solitude,Gabriel García Márquez,Cien años de soledad|百年孤独,Gabriel Garcia Marquez|G. G. Márquez,English translation,,translated_title|author_forms
+CAT103,Love in the Time of Cholera,Gabriel García Márquez,El amor en los tiempos del cólera,Gabriel Garcia Marquez|G. G. Márquez,English translation,,translated_title|author_forms
+CAT104,Don Quixote,Miguel de Cervantes,El ingenioso hidalgo don Quijote de la Mancha|Don Quijote,Miguel de Cervantes Saavedra,English translation,,translated_title|author_forms
+CAT105,Crime and Punishment,Fyodor Dostoevsky,Преступление и наказание|Crime & Punishment,Fedor Dostoevsky|Фёдор Достоевский,English translation,,translated_title|author_forms
+CAT106,The Brothers Karamazov,Fyodor Dostoevsky,Братья Карамазовы|Brothers Karamazov,Fedor Dostoevsky|Фёдор Достоевский,English translation,,translated_title|author_forms
+CAT107,Anna Karenina,Leo Tolstoy,Анна Каренина,Lev Tolstoy|Лев Толстой,English translation,,translated_title|author_forms
+CAT108,War and Peace,Leo Tolstoy,Война и мир,Lev Tolstoy|Лев Толстой,English translation,,translated_title|author_forms
+CAT109,The Master and Margarita,Mikhail Bulgakov,Мастер и Маргарита,Mikhail Afanasyevich Bulgakov,English translation,,translated_title|author_forms
+CAT110,The Metamorphosis,Franz Kafka,Die Verwandlung,,English translation,,translated_title
+CAT111,Norwegian Wood,Haruki Murakami,ノルウェイの森,Murakami Haruki|村上春樹,English translation,,translated_title|author_forms
+CAT112,Kafka on the Shore,Haruki Murakami,海辺のカフカ,Murakami Haruki|村上春樹,English translation,,translated_title|author_forms
+CAT113,The Vegetarian,Han Kang,채식주의자,Kang Han|한강,English translation,,translated_title|author_forms
+CAT114,Pachinko,Min Jin Lee,파친코,Lee Min Jin,Paperback,,translated_title|author_forms
+CAT115,Convenience Store Woman,Sayaka Murata,コンビニ人間,Murata Sayaka|村田沙耶香,English translation,,translated_title|author_forms
+CAT116,Before the Coffee Gets Cold,Toshikazu Kawaguchi,コーヒーが冷めないうちに,Kawaguchi Toshikazu,English translation,,translated_title|author_forms
+CAT117,The Three-Body Problem,Liu Cixin,三体|Three Body Problem,Cixin Liu,English translation,,translated_title|author_forms
+CAT118,The Dark Forest,Liu Cixin,黑暗森林,Cixin Liu,English translation,,translated_title|author_forms
+CAT119,Death's End,Liu Cixin,死神永生,Cixin Liu,English translation,,translated_title|author_forms
+CAT120,The Art of War,Sun Tzu,孫子兵法|Sunzi,Sunzi,English translation,,translated_title|author_forms
+CAT121,Tao Te Ching,Lao Tzu,道德經|Daodejing,Laozi,English translation,,translated_title|author_forms
+CAT122,Things Fall Apart,Chinua Achebe,,,,,
+CAT123,Half of a Yellow Sun,Chimamanda Ngozi Adichie,,,,,
+CAT124,Americanah,Chimamanda Ngozi Adichie,,,,,
+CAT125,Purple Hibiscus,Chimamanda Ngozi Adichie,,,,,
+CAT126,Midnight's Children,Salman Rushdie,Midnights Children,,Paperback,,
+CAT127,The God of Small Things,Arundhati Roy,,,,,
+CAT128,Interpreter of Maladies,Jhumpa Lahiri,,,,,
+CAT129,The Namesake,Jhumpa Lahiri,,,,,
+CAT130,The White Tiger,Aravind Adiga,,,,,
+CAT131,Shantaram,Gregory David Roberts,,,,,
+CAT132,Memoirs of a Geisha,Arthur Golden,,,,,
+CAT133,The Red Tent,Anita Diamant,,,,,
+CAT134,The Secret History,Donna Tartt,,,,,
+CAT135,Circe,Madeline Miller,,,,,
+CAT136,The Song of Achilles,Madeline Miller,,,,,
+CAT137,Piranesi,Susanna Clarke,,,,,
+CAT138,Jonathan Strange & Mr Norrell,Susanna Clarke,Jonathan Strange and Mr Norrell,,Hardcover,,
+CAT139,Good Omens,Terry Pratchett and Neil Gaiman,The Nice and Accurate Prophecies of Agnes Nutter Witch,Neil Gaiman and Terry Pratchett,Paperback,,author_forms
+CAT140,American Gods,Neil Gaiman,,,,,
+CAT141,Neverwhere,Neil Gaiman,,,,,
+CAT142,Coraline,Neil Gaiman,,,,,
+CAT143,The Ocean at the End of the Lane,Neil Gaiman,,,,,
+CAT144,Foundation,Isaac Asimov,,,Paperback,,contained_volume
+CAT145,Foundation and Empire,Isaac Asimov,,,Paperback,,contained_volume|substring_title
+CAT146,Second Foundation,Isaac Asimov,,,Paperback,,contained_volume|substring_title
+CAT147,"I, Robot",Isaac Asimov,I Robot,,Paperback,,
+CAT148,Ender's Game,Orson Scott Card,Enders Game,,Paperback,,substring_title
+CAT149,Speaker for the Dead,Orson Scott Card,,,Paperback,,
+CAT150,The Left Hand of Darkness,Ursula K. Le Guin,,Ursula Le Guin|U. K. Le Guin,Paperback,,author_forms
+CAT151,Northern Lights,Philip Pullman,The Golden Compass,,UK edition,,publication_title
