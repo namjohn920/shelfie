@@ -3,14 +3,14 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_503_SERVICE_UNAVAILABLE
 
+from library.services.analysis_pipeline import analyze_image
+from library.services.book_reading import MissingApiKeyError
+from library.services.catalog_matching import CatalogError
 from library.services.image_validation import (
     InvalidImageError,
     decode_uploaded_image,
 )
-from library.services.spine_detection import (
-    SpineDetectionError,
-    detect_book_spines,
-)
+from library.services.spine_detection import SpineDetectionError
 
 
 @api_view(['POST'])
@@ -32,14 +32,25 @@ def analyze(request):
         )
 
     try:
-        detection_result = detect_book_spines(decoded_image.upright_image)
+        analysis = analyze_image(decoded_image.upright_image)
     except SpineDetectionError:
         return Response(
             {'error': 'The local book detector is temporarily unavailable.'},
             status=HTTP_503_SERVICE_UNAVAILABLE,
         )
+    except MissingApiKeyError:
+        return Response(
+            {'error': 'The hosted book reader is not configured.'},
+            status=HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except CatalogError:
+        return Response(
+            {'error': 'The local book catalog is temporarily unavailable.'},
+            status=HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     image_metadata = decoded_image.metadata
+    detection_result = analysis.detection
 
     return Response(
         {
@@ -60,5 +71,8 @@ def analyze(request):
                 'image_height': detection_result.image_height,
                 'timing': detection_result.timing.as_dict(),
             },
+            'hosted_reader': analysis.hosted_reader.as_dict(),
+            'books': [book.as_dict() for book in analysis.books],
+            'warnings': list(analysis.warnings),
         }
     )

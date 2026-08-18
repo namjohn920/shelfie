@@ -87,6 +87,8 @@ class DetectionResult:
 
 
 Readability = Literal['readable', 'partial', 'unreadable']
+CropType = Literal['single_book', 'multiple_books', 'unreadable']
+ReaderStatus = Literal['ok', 'error']
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,75 @@ class BookRead:
     raw_text: str | None = None
     language: str | None = None
     readability: Readability = 'readable'
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {
+            'title': self.title,
+            'author': self.author,
+            'raw_text': self.raw_text,
+            'language': self.language,
+            'readability': self.readability,
+        }
+
+
+@dataclass(frozen=True)
+class CropReadResult:
+    detection_index: int
+    crop_type: CropType | None
+    readability: Readability | None
+    books: tuple[BookRead, ...]
+    status: ReaderStatus
+    error_code: str | None
+    error_message: str | None
+    latency_seconds: float
+    cost_usd: float | None
+    model_id: str
+    provider: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    notes: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'detection_index': self.detection_index,
+            'crop_type': self.crop_type,
+            'readability': self.readability,
+            'book_count': len(self.books),
+            'status': self.status,
+            'error_code': self.error_code,
+            'error_message': self.error_message,
+            'latency_seconds': round(self.latency_seconds, 4),
+            'cost_usd': self.cost_usd,
+            'model': self.model_id,
+            'provider': self.provider,
+            'prompt_tokens': self.prompt_tokens,
+            'completion_tokens': self.completion_tokens,
+            'total_tokens': self.total_tokens,
+            'notes': self.notes,
+        }
+
+
+@dataclass(frozen=True)
+class ReaderBatchResult:
+    results: tuple[CropReadResult, ...]
+    model_id: str
+    attempted_crops: int
+    successful_crops: int
+    failed_crops: int
+    wall_seconds: float
+    total_cost_usd: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'model': self.model_id,
+            'attempted_crops': self.attempted_crops,
+            'successful_crops': self.successful_crops,
+            'failed_crops': self.failed_crops,
+            'wall_seconds': round(self.wall_seconds, 4),
+            'total_cost_usd': round(self.total_cost_usd, 8),
+            'crop_results': [result.as_dict() for result in self.results],
+        }
 
 
 @dataclass(frozen=True)
@@ -109,6 +180,14 @@ class CatalogEntry:
     contains_titles: tuple[str, ...] = ()
     ambiguity_tags: tuple[str, ...] = ()
 
+    def as_dict(self) -> dict[str, str]:
+        return {
+            'catalog_id': self.catalog_id,
+            'title': self.title,
+            'author': self.author,
+            'edition': self.edition,
+        }
+
 
 @dataclass(frozen=True)
 class MatchCandidate:
@@ -119,6 +198,17 @@ class MatchCandidate:
     title_score: float
     author_score: float | None
     combined_score: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'catalog': self.entry.as_dict(),
+            'matched_title': self.matched_title,
+            'matched_author': self.matched_author,
+            'title_evidence': self.title_evidence,
+            'title_score': self.title_score,
+            'author_score': self.author_score,
+            'combined_score': self.combined_score,
+        }
 
 
 @dataclass(frozen=True)
@@ -131,3 +221,43 @@ class MatchResult:
     second_score: float | None
     margin: float | None
     candidate_floor: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'best_candidate': (
+                self.best_candidate.as_dict() if self.best_candidate else None
+            ),
+            'second_candidate': (
+                self.second_candidate.as_dict() if self.second_candidate else None
+            ),
+            'title_score': self.title_score,
+            'author_score': self.author_score,
+            'combined_score': self.combined_score,
+            'second_score': self.second_score,
+            'margin': self.margin,
+            'candidate_floor': self.candidate_floor,
+        }
+
+
+@dataclass(frozen=True)
+class AnalyzedBook:
+    detection_index: int
+    book_index: int
+    read: BookRead
+    match: MatchResult | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'detection_index': self.detection_index,
+            'book_index': self.book_index,
+            'read': self.read.as_dict(),
+            'match': self.match.as_dict() if self.match else None,
+        }
+
+
+@dataclass(frozen=True)
+class AnalysisPipelineResult:
+    detection: DetectionResult
+    hosted_reader: ReaderBatchResult
+    books: tuple[AnalyzedBook, ...]
+    warnings: tuple[str, ...]
