@@ -108,6 +108,39 @@ The candidate must be able to explain and modify every important line of code du
 
 ---
 
+## Architecture Boundaries and Difficult Inputs
+
+Build Shelfie from small modules named for the product responsibility they own. Each
+module should have one primary reason to change. Keep Django request handlers, Expo
+entry points, and React screen edges thin, and connect pipeline blocks with stable,
+simple data contracts.
+
+Prefer direct functions and small data structures over factories, dependency-injection
+containers, generic service frameworks, or abstract-class hierarchies. Do not create
+empty placeholder modules for future work; add a module when it has real behavior.
+
+The planned analysis order is:
+
+```text
+image validation
+→ spine detection
+→ crop processing
+→ book reading
+→ catalog matching
+→ review policy
+```
+
+Difficult photos are expected inputs, including mixed languages, non-Latin scripts,
+rotated or horizontal books, occlusion, backwards books, glare, dark spines, and small
+or distant books. Preserve Unicode and multilingual evidence. Future reading results
+must distinguish `readable`, `partial`, and `unreadable` rather than inventing missing
+text. Isolate failures per spine so one bad region does not discard useful results from
+the shelf. Any orientation/read fallback must be bounded. When catalog evidence is
+insufficient, return an unmatched or reviewable result instead of forcing a confident
+book.
+
+---
+
 ## Implementation Priorities
 
 Work in this order unless there is a strong reason not to:
@@ -920,4 +953,3 @@ In addition to writing the reporting files, finish each Codex run with a concise
 - paths to `codex_docs/last_run.md` and `codex_docs/progress_report.md`
 
 The persisted Markdown files are the source of truth; the terminal summary is only a convenience.
-

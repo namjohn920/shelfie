@@ -1,13 +1,12 @@
-from PIL import Image, UnidentifiedImageError
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 
-
-@api_view(['GET'])
-def health(request):
-    return Response({'status': 'ok'})
+from library.services.image_validation import (
+    InvalidImageError,
+    validate_uploaded_image,
+)
 
 
 @api_view(['POST'])
@@ -21,10 +20,8 @@ def analyze(request):
         )
 
     try:
-        with Image.open(uploaded_image) as image:
-            image.load()
-            width, height = image.size
-    except (UnidentifiedImageError, OSError):
+        image_metadata = validate_uploaded_image(uploaded_image)
+    except InvalidImageError:
         return Response(
             {'error': 'The uploaded file is not a valid image.'},
             status=HTTP_400_BAD_REQUEST,
@@ -33,9 +30,9 @@ def analyze(request):
     return Response(
         {
             'status': 'received',
-            'filename': uploaded_image.name,
-            'content_type': uploaded_image.content_type,
-            'width': width,
-            'height': height,
+            'filename': image_metadata.filename,
+            'content_type': image_metadata.content_type,
+            'width': image_metadata.width,
+            'height': image_metadata.height,
         }
     )
