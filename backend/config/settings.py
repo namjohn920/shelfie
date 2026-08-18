@@ -25,7 +25,9 @@ SECRET_KEY = 'django-insecure-local-development-only'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# Accept the Mac's current LAN address during local device testing. Production
+# configuration is intentionally out of scope and does not inherit this rule.
+ALLOWED_HOSTS = ['*'] if DEBUG else []
 
 
 # Application definition
