@@ -1,115 +1,81 @@
-# Shelfie Architecture Plan
+# Shelfie Architecture
 
-## Purpose and Current Scope
+Shelfie is a small Django/Expo application whose modules follow product
+responsibilities. Framework edges coordinate the flow; model, matching, policy, and
+persistence details stay behind focused service boundaries.
 
-Shelfie uses small, descriptive modules with one primary responsibility. This plan
-records how the working Milestone 2 upload flow is separated now and where later
-computer-vision blocks belong. It does not implement the detector, hosted reader,
-catalog matcher, review flow, or persistence.
-
-Future service files are created only when they contain real implementation. They are
-listed here instead of being added as empty placeholders.
-
-## Current Working Flow
+## End-to-end flow
 
 ```text
-Expo ScanScreen
-→ shelfieApi multipart request
-→ Django analyze endpoint
-→ image_validation Pillow decode
-→ factual upload metadata
-→ ScanScreen success or error state
+Expo photo picker
+→ POST /api/analyze/ (multipart image)
+→ Pillow validation and EXIF orientation correction
+→ CPU DETR book-region detection
+→ padded in-memory crops and review thumbnails
+→ bounded concurrent Qwen/OpenRouter crop reading
+→ Unicode-aware catalog ranking
+→ conservative review policy
+→ spatial duplicate consolidation
+→ ordinary/series presentation grouping
+→ explicit user add, correction, or discard
+→ GET/POST/DELETE /api/library/ backed by SQLite
 ```
 
-### Backend responsibilities
+The analysis response is additive: raw detections and reads remain available alongside
+the smaller consolidated review items and presentation groups. Grouping therefore
+reduces review work without becoming a new source of identification truth.
 
-- `library/api/health.py` owns only `GET /api/health/`.
-- `library/api/analyze.py` owns multipart request handling, known validation-error
-  translation, and response serialization for `POST /api/analyze/`.
-- `library/services/image_validation.py` owns Pillow decoding, the invalid-image
-  failure, and factual filename, content type, width, and height extraction.
-- `library/urls.py` maps stable endpoint paths to their handlers.
+## Backend boundaries
 
-### Frontend responsibilities
+- `library/api/` translates HTTP requests and known service errors; it does not own AI
+  or matching behavior.
+- `services/image_validation.py` fully decodes uploads and produces upright RGB pixels.
+- `services/spine_detection.py` owns the cached CPU-only DETR checkpoint, threshold,
+  timing, and safe book-region boxes.
+- `services/crop_processing.py` creates bounded padded crops and compact source
+  thumbnails in memory.
+- `services/book_reading.py` owns Qwen/OpenRouter requests, strict response validation,
+  bounded concurrency, cost/latency accounting, and per-crop failure isolation.
+- `services/catalog_matching.py` loads the CSV and returns normalized fuzzy title and
+  author evidence, including a runner-up and margin.
+- `services/review_policy.py` alone maps reader/matcher evidence to high confidence,
+  review required, or unmatched. It also decides whether a catalog suggestion is safe
+  enough to show.
+- `services/result_consolidation.py` conservatively joins spatial duplicates while
+  preserving source indices and raw results.
+- `services/review_grouping.py` derives display-only ordinary and series groups from
+  consolidated items.
+- `services/analysis_pipeline.py` orchestrates those services and preserves partial
+  successes and warnings.
+- `models.py` and the library serializer/API persist only confirmed catalog or manual
+  book fields in SQLite.
 
-- `App.tsx` is the Expo entry point and renders the current screen.
-- `src/screens/ScanScreen.tsx` owns selected-photo, loading, result, and error state
-  and coordinates the user flow.
-- `src/components/BookshelfPhotoPicker.tsx` owns permission/selection interaction
-  and the selected-photo preview. It performs no backend networking.
-- `src/components/UploadResultCard.tsx` renders successful upload metadata.
-- `src/api/shelfieApi.ts` owns API URL normalization, `FormData`, the analyze request,
-  response validation, and user-facing network/API error translation.
-- `src/types/api.ts` owns only the API result type used by the current UI.
+Ordinary dataclass contracts in `library/contracts/analysis.py` keep model/provider
+objects from leaking across these boundaries.
 
-## Future Analysis Pipeline
+## Frontend boundaries
 
-The intended pipeline order is:
+- `App.tsx` remains the thin Expo entry point.
+- `src/screens/ScanScreen.tsx` coordinates selection, analysis, review, and library
+  state.
+- `src/api/shelfieApi.ts` owns the base URL, multipart/JSON requests, response
+  validation, and user-facing network errors.
+- `src/components/` owns photo selection, analysis presentation, book review actions,
+  and the persisted library list.
+- `src/types/api.ts` mirrors the public API contracts.
 
-```text
-image validation
-→ spine detection
-→ crop processing
-→ book reading
-→ catalog matching
-→ review policy
-```
+Every result, including a high-confidence one, needs an explicit user action before a
+library write. Uncertain, unreadable, failed, and likely non-book regions stay visible
+for manual correction or discard.
 
-`services/analysis_pipeline.py` will coordinate those blocks and collect results, but
-will not absorb their model-, provider-, matching-, or policy-specific behavior.
+## Replaceability and failure isolation
 
-The future service responsibilities are:
+The detector returns ordinary boxes; the reader returns validated book-read contracts;
+the matcher returns ranking evidence; and the review policy returns product decisions.
+This keeps likely changes localized—for example, replacing DETR does not require a new
+matcher, and changing review thresholds does not alter hosted requests or persistence.
 
-- `services/spine_detection.py`: run the selected pretrained local CPU detector and
-  return spine regions. It localizes books; it does not read titles or choose catalog
-  entries.
-- `services/crop_processing.py`: turn detected regions into usable crops and own any
-  justified orientation, expansion, resize, or contrast preparation. Fallback work is
-  bounded rather than open-ended.
-- `services/book_reading.py`: ask the hosted visual reader for evidence visible on a
-  crop and validate its response. It preserves Unicode and represents missing or
-  uncertain text explicitly; it does not perform catalog matching.
-- `services/catalog_matching.py`: rank catalog candidates from a book read and return
-  the best candidate, an optional runner-up, and explainable score/confidence evidence.
-  It may return no match when evidence is insufficient.
-- `services/review_policy.py`: decide whether a result can be accepted, needs review,
-  is unmatched, or is unreadable. Exact policy and thresholds wait for matching tests
-  and real evidence.
-- `services/analysis_pipeline.py`: orchestrate the blocks per detected spine, isolate
-  per-spine failures, and preserve successful partial results plus warnings for the
-  overall bookshelf.
-
-## Future Data Concepts
-
-Exact fields will be finalized when the relevant implementation is built. The small
-contracts must support:
-
-- `SpineDetection`: a stable detection identity, its image region, and useful detector
-  evidence.
-- `BookRead`: optional title, optional author, optional raw text, optional language,
-  and `readability` of `readable`, `partial`, or `unreadable`.
-- `MatchResult`: the best candidate, possibly the second candidate, and the scoring or
-  confidence evidence needed to explain ambiguity. The best candidate may be absent.
-- `ReviewDecision`: an explicit downstream decision that preserves uncertainty rather
-  than fabricating a confident identification.
-
-## Difficult-Photo Behavior
-
-Mixed-language and non-Latin text, horizontal or rotated books, partial occlusion,
-backwards books, glare, dark spines, small or distant books, and missing catalog entries
-are normal outcomes to design for.
-
-The operating principle is:
-
-```text
-support what can be read
-→ preserve uncertainty
-→ one bounded fallback where justified
-→ review, unmatched, or unreadable
-→ never fabricate a confident book
-```
-
-One failed or unreadable spine must not crash or erase the rest of the bookshelf
-analysis. The concrete detector, preprocessing strategy, reader provider, matching
-evidence, retry rule, and review thresholds remain implementation decisions for later
-milestones.
+Expected remote failures become per-crop results so other crops survive. Invalid
+images, unavailable local services, and missing hosted configuration are translated at
+the API boundary. No model output is treated as confirmed library data without the
+human step.
