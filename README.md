@@ -100,6 +100,32 @@ npx expo start
 
 Open the QR code in Expo Go, choose a bookshelf photo, and tap **Analyze Shelf**.
 
+### Quick start after setup
+
+Once dependencies, environment files, and migrations are already configured, start the
+app in two terminals.
+
+Terminal 1 — Django backend:
+
+```bash
+cd backend
+source .venv/bin/activate
+python manage.py runserver 0.0.0.0:8000
+```
+
+Terminal 2 — Expo frontend:
+
+```bash
+cd frontend
+source "$HOME/.nvm/nvm.sh"
+nvm use
+npx expo start --clear
+```
+
+Scan the QR code with Expo Go. If Expo reports that port `8081` is already in use, allow
+it to use another available port such as `8082` rather than terminating an unrelated
+process.
+
 ## Catalog and matching
 
 [`catalog.csv`](catalog.csv) contains 151 UTF-8 entries and is deliberately not a clean
