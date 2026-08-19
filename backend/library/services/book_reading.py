@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from typing import Any
@@ -15,6 +17,7 @@ from library.contracts.analysis import (
     CropReadResult,
     CropType,
     Readability,
+    RegionType,
     ReaderBatchResult,
 )
 from library.services.crop_processing import SpineCrop
@@ -25,14 +28,33 @@ MODEL_ID = 'qwen/qwen3-vl-8b-instruct'
 REQUEST_TIMEOUT_SECONDS = 90
 MAX_BOOKS_PER_CROP = 3
 MAX_OUTPUT_TOKENS = 600
-DEFAULT_MAX_WORKERS = 4
+DEFAULT_MAX_WORKERS = 8
+OPENROUTER_PROVIDER_PREFERENCES = {
+    'require_parameters': True,
+    'sort': 'latency',
+}
 
 CORE_PROMPT = (
     'You are reading a crop produced by a local bookshelf detector. The crop may '
-    'contain one book, several books, only part of a spine, horizontal/rotated text, '
-    'non-English text, or no usable book text. Extract only text supported by the '
-    'image. Do not guess from familiarity. Preserve original-language text. Return '
-    'null when evidence is insufficient.'
+    'contain one book, several books, a non-book object, only part of a spine, '
+    'horizontal/rotated text, non-English text, or no usable book text. Classify '
+    'region_type as book, multiple_books, non_book, or uncertain. Binders, notebooks, '
+    'folders, boxes, signs, and labels may contain readable text without being books. '
+    'If clearly not a book, use non_book, return no book entries, and preserve visible '
+    'text in region_text. If book identity is uncertain, use uncertain. Never infer a '
+    'book merely because familiar words appear. Extract only text supported by the '
+    'image and do not guess from familiarity. Preserve original-language text. '
+    'An author must be a person or organization explicitly credited as the author; '
+    'publisher text, series labels, lecture/course labels, category labels, slogans, '
+    'and unrelated nearby text are not authors. Authorship markers such as by, written '
+    'by, 지음, 저, 저자, and 글 may establish authorship but must not be included in '
+    'the returned author value. Return author null when authorship is uncertain. If a '
+    'volume or book number is explicitly visible as a separate series identifier, put '
+    'it in volume and keep the title clean: visible 21 plus 土地 means title 土地 and '
+    'volume 21. Return volume null when no number is readable and never infer a missing '
+    'number from series knowledge. Edition statements such as Second Edition, years, '
+    'and numbers that are part of the title itself (for example 1984 or 1등의 통찰) '
+    'are not volume identifiers. Return null for any other insufficient evidence.'
 )
 
 NULLABLE_STRING_SCHEMA = {
@@ -45,12 +67,29 @@ NULLABLE_STRING_SCHEMA = {
 EXTRACTION_SCHEMA = {
     'type': 'object',
     'additionalProperties': False,
-    'required': ['crop_type', 'readability', 'books', 'notes'],
+    'required': [
+        'crop_type',
+        'region_type',
+        'region_text',
+        'readability',
+        'books',
+        'notes',
+    ],
     'properties': {
         'crop_type': {
-            'type': 'string',
-            'enum': ['single_book', 'multiple_books', 'unreadable'],
+            'anyOf': [
+                {
+                    'type': 'string',
+                    'enum': ['single_book', 'multiple_books', 'unreadable'],
+                },
+                {'type': 'null'},
+            ],
         },
+        'region_type': {
+            'type': 'string',
+            'enum': ['book', 'multiple_books', 'non_book', 'uncertain'],
+        },
+        'region_text': NULLABLE_STRING_SCHEMA,
         'readability': {
             'type': 'string',
             'enum': ['readable', 'partial', 'unreadable'],
@@ -61,10 +100,11 @@ EXTRACTION_SCHEMA = {
             'items': {
                 'type': 'object',
                 'additionalProperties': False,
-                'required': ['title', 'author', 'language', 'raw_text'],
+                'required': ['title', 'author', 'volume', 'language', 'raw_text'],
                 'properties': {
                     'title': NULLABLE_STRING_SCHEMA,
                     'author': NULLABLE_STRING_SCHEMA,
+                    'volume': NULLABLE_STRING_SCHEMA,
                     'language': NULLABLE_STRING_SCHEMA,
                     'raw_text': NULLABLE_STRING_SCHEMA,
                 },
@@ -73,6 +113,8 @@ EXTRACTION_SCHEMA = {
         'notes': {'type': 'string'},
     },
 }
+
+_TERMINAL_KOREAN_CREDIT_MARKER = re.compile(r'\s+(?:지음|저자|저|글)\s*$')
 
 
 class MissingApiKeyError(RuntimeError):
@@ -116,7 +158,7 @@ def _request_payload(crop: SpineCrop) -> dict[str, object]:
                 'schema': EXTRACTION_SCHEMA,
             },
         },
-        'provider': {'require_parameters': True},
+        'provider': OPENROUTER_PROVIDER_PREFERENCES,
         'temperature': 0,
         'max_tokens': MAX_OUTPUT_TOKENS,
         'stream': False,
@@ -129,6 +171,26 @@ def _clean_optional_text(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _clean_author(value: str | None) -> str | None:
+    cleaned = _clean_optional_text(value)
+    if cleaned is None:
+        return None
+    without_marker = _TERMINAL_KOREAN_CREDIT_MARKER.sub('', cleaned).strip()
+    return without_marker or None
+
+
+def _clean_volume(value: str | None, title: str | None) -> str | None:
+    """Reject bounded false-volume shapes without extracting volume from a title."""
+    cleaned = _clean_optional_text(value)
+    if cleaned is None or re.search(r'\bedition\b', cleaned, flags=re.IGNORECASE):
+        return None
+    normalized_volume = unicodedata.normalize('NFKC', cleaned)
+    normalized_title = unicodedata.normalize('NFKC', title or '').strip()
+    if normalized_volume.isdigit() and normalized_title.startswith(normalized_volume):
+        return None
+    return cleaned
 
 
 def _provider_error_present(response_body: dict[str, Any]) -> bool:
@@ -196,8 +258,22 @@ def _assistant_content(response_body: dict[str, Any]) -> dict[str, Any]:
 
 def _validated_books(
     extraction: dict[str, Any],
-) -> tuple[CropType, Readability, tuple[BookRead, ...], str | None]:
-    required_fields = {'crop_type', 'readability', 'books', 'notes'}
+) -> tuple[
+    CropType | None,
+    RegionType,
+    str | None,
+    Readability,
+    tuple[BookRead, ...],
+    str | None,
+]:
+    required_fields = {
+        'crop_type',
+        'region_type',
+        'region_text',
+        'readability',
+        'books',
+        'notes',
+    }
     if set(extraction) != required_fields:
         raise _ResponseValidationError(
             'invalid_schema',
@@ -205,10 +281,22 @@ def _validated_books(
         )
 
     crop_type = extraction['crop_type']
-    if crop_type not in {'single_book', 'multiple_books', 'unreadable'}:
+    if crop_type not in {None, 'single_book', 'multiple_books', 'unreadable'}:
         raise _ResponseValidationError(
             'invalid_schema',
             'The hosted reader returned an invalid crop type.',
+        )
+    region_type = extraction['region_type']
+    if region_type not in {'book', 'multiple_books', 'non_book', 'uncertain'}:
+        raise _ResponseValidationError(
+            'invalid_schema',
+            'The hosted reader returned an invalid region type.',
+        )
+    region_text = extraction['region_text']
+    if region_text is not None and not isinstance(region_text, str):
+        raise _ResponseValidationError(
+            'invalid_schema',
+            'The hosted reader returned invalid region text.',
         )
     readability = extraction['readability']
     if readability not in {'readable', 'partial', 'unreadable'}:
@@ -229,9 +317,14 @@ def _validated_books(
             'invalid_schema',
             'The hosted reader returned an invalid number of books.',
         )
+    if region_type == 'non_book' and raw_books:
+        raise _ResponseValidationError(
+            'invalid_schema',
+            'The hosted reader returned book entries for a non-book region.',
+        )
 
     books: list[BookRead] = []
-    required_book_fields = {'title', 'author', 'language', 'raw_text'}
+    required_book_fields = {'title', 'author', 'volume', 'language', 'raw_text'}
     for raw_book in raw_books:
         if not isinstance(raw_book, dict) or set(raw_book) != required_book_fields:
             raise _ResponseValidationError(
@@ -246,17 +339,26 @@ def _validated_books(
                 'invalid_schema',
                 'The hosted reader returned an invalid book text field.',
             )
+        title = _clean_optional_text(raw_book['title'])
         books.append(
             BookRead(
-                title=_clean_optional_text(raw_book['title']),
-                author=_clean_optional_text(raw_book['author']),
+                title=title,
+                author=_clean_author(raw_book['author']),
+                volume=_clean_volume(raw_book['volume'], title),
                 language=_clean_optional_text(raw_book['language']),
                 raw_text=_clean_optional_text(raw_book['raw_text']),
                 readability=readability,
             )
         )
 
-    return crop_type, readability, tuple(books), _clean_optional_text(notes)
+    return (
+        crop_type,
+        region_type,
+        _clean_optional_text(region_text),
+        readability,
+        tuple(books),
+        _clean_optional_text(notes),
+    )
 
 
 def _optional_number(value: Any) -> float | None:
@@ -280,6 +382,8 @@ def _error_result(
     return CropReadResult(
         detection_index=crop.detection_index,
         crop_type=None,
+        region_type=None,
+        region_text=None,
         readability=None,
         books=(),
         status='error',
@@ -357,7 +461,14 @@ def read_book_crop(crop: SpineCrop, *, api_key: str) -> CropReadResult:
 
     try:
         extraction = _assistant_content(response_body)
-        crop_type, readability, books, notes = _validated_books(extraction)
+        (
+            crop_type,
+            region_type,
+            region_text,
+            readability,
+            books,
+            notes,
+        ) = _validated_books(extraction)
     except _ResponseValidationError as error:
         return _error_result(
             crop,
@@ -373,6 +484,8 @@ def read_book_crop(crop: SpineCrop, *, api_key: str) -> CropReadResult:
     return CropReadResult(
         detection_index=crop.detection_index,
         crop_type=crop_type,
+        region_type=region_type,
+        region_text=region_text,
         readability=readability,
         books=books,
         status='ok',

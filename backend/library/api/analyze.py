@@ -73,6 +73,13 @@ def analyze(request):
             },
             'hosted_reader': analysis.hosted_reader.as_dict(),
             'books': [book.as_dict() for book in analysis.books],
+            'review_items': [item.as_dict() for item in analysis.review_items],
+            'review_groups': [
+                group.as_dict() for group in analysis.review_groups
+            ],
+            'crop_thumbnails': [
+                thumbnail.as_dict() for thumbnail in analysis.crop_thumbnails
+            ],
             'warnings': list(analysis.warnings),
         }
     )

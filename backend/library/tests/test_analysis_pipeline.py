@@ -7,10 +7,12 @@ from PIL import Image
 from library.contracts.analysis import (
     BookRead,
     BoundingBox,
+    CatalogEntry,
     CropReadResult,
     DetectionResult,
     DetectorTiming,
     MatchResult,
+    MatchCandidate,
     ReaderBatchResult,
     SpineDetection,
 )
@@ -41,11 +43,22 @@ def crop_read_result(
     books: tuple[BookRead, ...],
     *,
     crop_type='single_book',
+    region_type=None,
+    region_text=None,
+    readability=None,
 ) -> CropReadResult:
+    if region_type is None:
+        region_type = 'multiple_books' if crop_type == 'multiple_books' else 'book'
     return CropReadResult(
         detection_index=detection_index,
         crop_type=crop_type,
-        readability=books[0].readability if books else 'unreadable',
+        region_type=region_type,
+        region_text=region_text,
+        readability=(
+            readability
+            if readability is not None
+            else books[0].readability if books else 'unreadable'
+        ),
         books=books,
         status='ok',
         error_code=None,
@@ -60,6 +73,8 @@ def failed_crop(detection_index: int) -> CropReadResult:
     return CropReadResult(
         detection_index=detection_index,
         crop_type=None,
+        region_type=None,
+        region_text=None,
         readability=None,
         books=(),
         status='error',
@@ -96,6 +111,36 @@ NO_CANDIDATE_MATCH = MatchResult(
 )
 
 
+def catalog_match(
+    *,
+    score: float,
+    title_score: float,
+    margin: float,
+    catalog_id: str = 'CAT086',
+    title: str = 'The Lean Startup',
+    author: str = 'Eric Ries',
+) -> MatchResult:
+    candidate = MatchCandidate(
+        entry=CatalogEntry(catalog_id, title, author),
+        matched_title=title,
+        matched_author=author,
+        title_evidence='canonical',
+        title_score=title_score,
+        author_score=100.0,
+        combined_score=score,
+    )
+    return MatchResult(
+        best_candidate=candidate,
+        second_candidate=None,
+        title_score=title_score,
+        author_score=100.0,
+        combined_score=score,
+        second_score=score - margin,
+        margin=margin,
+        candidate_floor=60.0,
+    )
+
+
 class AnalysisPipelineTests(SimpleTestCase):
     @patch('library.services.analysis_pipeline.match_catalog')
     @patch('library.services.analysis_pipeline.load_catalog')
@@ -120,6 +165,8 @@ class AnalysisPipelineTests(SimpleTestCase):
         match_catalog.assert_called_once_with(book_read, catalog)
         self.assertEqual(result.books[0].read, book_read)
         self.assertIs(result.books[0].match, NO_CANDIDATE_MATCH)
+        self.assertEqual(result.books[0].review.status, 'unmatched')
+        self.assertEqual(result.books[0].review.reasons, ('no_candidate',))
 
     @patch('library.services.analysis_pipeline.match_catalog')
     @patch('library.services.analysis_pipeline.load_catalog')
@@ -144,6 +191,8 @@ class AnalysisPipelineTests(SimpleTestCase):
         match_catalog.assert_not_called()
         load_catalog.assert_not_called()
         self.assertIsNone(result.books[0].match)
+        self.assertEqual(result.books[0].review.status, 'unmatched')
+        self.assertEqual(result.books[0].review.reasons, ('unreadable',))
 
     @patch('library.services.analysis_pipeline.match_catalog')
     @patch('library.services.analysis_pipeline.load_catalog', return_value=(object(),))
@@ -178,7 +227,7 @@ class AnalysisPipelineTests(SimpleTestCase):
     @patch('library.services.analysis_pipeline.load_catalog', return_value=(object(),))
     @patch('library.services.analysis_pipeline.read_book_crops')
     @patch('library.services.analysis_pipeline.detect_book_spines')
-    def test_partial_hosted_failure_preserves_successful_books(
+    def test_partial_hosted_failure_preserves_success_and_surfaces_failure(
         self,
         detect_book_spines,
         read_book_crops,
@@ -193,12 +242,33 @@ class AnalysisPipelineTests(SimpleTestCase):
 
         result = analyze_image(Image.new('RGB', (20, 20)), api_key='test-key')
 
-        self.assertEqual(len(result.books), 1)
+        self.assertEqual(len(result.books), 2)
         self.assertEqual(result.books[0].detection_index, 1)
+        self.assertEqual(result.books[1].detection_index, 2)
+        self.assertIsNone(result.books[1].read)
+        self.assertEqual(result.books[1].review.status, 'unmatched')
+        self.assertEqual(result.books[1].review.reasons, ('read_failed',))
         self.assertEqual(
             result.warnings,
             ('Detection 2: The hosted reader timed out for this crop.',),
         )
+
+    @patch('library.services.analysis_pipeline.read_book_crops')
+    @patch('library.services.analysis_pipeline.detect_book_spines')
+    def test_unreadable_crop_without_book_entries_reaches_review(
+        self,
+        detect_book_spines,
+        read_book_crops,
+    ):
+        detect_book_spines.return_value = detection_result(1)
+        read_book_crops.return_value = batch(crop_read_result(1, ()))
+
+        result = analyze_image(Image.new('RGB', (20, 20)), api_key='test-key')
+
+        self.assertEqual(len(result.books), 1)
+        self.assertEqual(result.books[0].read.readability, 'unreadable')
+        self.assertEqual(result.books[0].review.status, 'unmatched')
+        self.assertEqual(result.books[0].review.reasons, ('unreadable',))
 
     @patch('library.services.analysis_pipeline.detect_book_spines')
     def test_zero_detections_needs_no_hosted_key(self, detect_book_spines):
@@ -209,4 +279,102 @@ class AnalysisPipelineTests(SimpleTestCase):
 
         self.assertEqual(result.hosted_reader.attempted_crops, 0)
         self.assertEqual(result.books, ())
+        self.assertEqual(result.review_items, ())
+        self.assertEqual(result.review_groups, ())
+        self.assertEqual(result.crop_thumbnails, ())
         self.assertEqual(result.warnings, ())
+
+    @patch('library.services.analysis_pipeline.match_catalog')
+    @patch('library.services.analysis_pipeline.load_catalog')
+    @patch('library.services.analysis_pipeline.read_book_crops')
+    @patch('library.services.analysis_pipeline.detect_book_spines')
+    def test_non_book_skips_matching_and_remains_reviewable(
+        self,
+        detect_book_spines,
+        read_book_crops,
+        load_catalog,
+        match_catalog,
+    ):
+        detect_book_spines.return_value = detection_result(28)
+        read_book_crops.return_value = batch(
+            crop_read_result(
+                28,
+                (),
+                crop_type=None,
+                region_type='non_book',
+                region_text='DURABLE AVERY',
+                readability='readable',
+            )
+        )
+
+        result = analyze_image(Image.new('RGB', (20, 20)), api_key='test-key')
+
+        load_catalog.assert_not_called()
+        match_catalog.assert_not_called()
+        self.assertEqual(result.books[0].region_type, 'non_book')
+        self.assertEqual(result.books[0].region_text, 'DURABLE AVERY')
+        self.assertEqual(result.books[0].review.status, 'unmatched')
+        self.assertEqual(result.books[0].review.reasons, ('non_book',))
+        self.assertEqual(result.review_items[0].duplicate_count, 1)
+
+    @patch('library.services.analysis_pipeline.match_catalog')
+    @patch('library.services.analysis_pipeline.load_catalog', return_value=(object(),))
+    @patch('library.services.analysis_pipeline.read_book_crops')
+    @patch('library.services.analysis_pipeline.detect_book_spines')
+    def test_raw_match_is_preserved_when_weak_candidate_is_hidden(
+        self,
+        detect_book_spines,
+        read_book_crops,
+        _load_catalog,
+        match_catalog,
+    ):
+        book_read = BookRead('GETTING STARTED IN CHART PATTERNS', 'BULKOWSKI')
+        weak_match = catalog_match(
+            score=69.3,
+            title_score=56.1,
+            margin=0.9,
+            catalog_id='CAT082',
+            title='Quiet',
+            author='Susan Cain',
+        )
+        detect_book_spines.return_value = detection_result(34)
+        read_book_crops.return_value = batch(crop_read_result(34, (book_read,)))
+        match_catalog.return_value = weak_match
+
+        result = analyze_image(Image.new('RGB', (20, 20)), api_key='test-key')
+
+        self.assertIs(result.books[0].match, weak_match)
+        self.assertIsNone(result.books[0].suggested_match)
+        self.assertIn(
+            'candidate_not_reliable_enough_to_show',
+            result.books[0].review.reasons,
+        )
+        self.assertIs(result.review_items[0].representative.match, weak_match)
+
+    @patch('library.services.analysis_pipeline.match_catalog')
+    @patch('library.services.analysis_pipeline.load_catalog', return_value=(object(),))
+    @patch('library.services.analysis_pipeline.read_book_crops')
+    @patch('library.services.analysis_pipeline.detect_book_spines')
+    def test_lean_startup_remains_high_confidence_with_visible_suggestion(
+        self,
+        detect_book_spines,
+        read_book_crops,
+        _load_catalog,
+        match_catalog,
+    ):
+        book_read = BookRead('The Lean Startup', 'Eric Ries')
+        strong_match = catalog_match(score=100.0, title_score=100.0, margin=26.5)
+        detect_book_spines.return_value = detection_result(42)
+        read_book_crops.return_value = batch(crop_read_result(42, (book_read,)))
+        match_catalog.return_value = strong_match
+
+        result = analyze_image(Image.new('RGB', (20, 20)), api_key='test-key')
+
+        self.assertEqual(result.books[0].review.status, 'high_confidence')
+        self.assertEqual(
+            result.books[0].suggested_match.entry.catalog_id,
+            'CAT086',
+        )
+        self.assertEqual(len(result.review_groups), 1)
+        self.assertEqual(result.review_groups[0].representative_item_id, 'review-42-0')
+        self.assertEqual(len(result.crop_thumbnails), 1)

@@ -9,10 +9,13 @@ type UploadResultCardProps = {
 export function UploadResultCard({ result }: UploadResultCardProps) {
   return (
     <View style={styles.successCard}>
-      <Text style={styles.successTitle}>✓ Image received by Shelfie</Text>
+      <Text style={styles.successTitle}>✓ Analysis complete</Text>
       <Text style={styles.messageText}>Filename: {result.filename}</Text>
       <Text style={styles.messageText}>
         Size: {result.width} × {result.height}
+      </Text>
+      <Text style={styles.messageText}>
+        Detected regions: {result.detection_count}
       </Text>
     </View>
   );

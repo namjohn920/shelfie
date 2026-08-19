@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import base64
 import math
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Iterable
 
 from PIL import Image
 
-from library.contracts.analysis import BoundingBox, SpineDetection
+from library.contracts.analysis import BoundingBox, CropThumbnail, SpineDetection
 
 
 DEFAULT_CROP_PADDING_PIXELS = 8
+THUMBNAIL_LONGEST_SIDE_PIXELS = 220
+THUMBNAIL_JPEG_QUALITY = 55
 
 
 @dataclass(frozen=True)
@@ -57,3 +61,39 @@ def create_spine_crops(
             )
         )
     return tuple(crops)
+
+
+def create_crop_thumbnails(
+    crops: Iterable[SpineCrop],
+    *,
+    longest_side_pixels: int = THUMBNAIL_LONGEST_SIDE_PIXELS,
+    jpeg_quality: int = THUMBNAIL_JPEG_QUALITY,
+) -> tuple[CropThumbnail, ...]:
+    """Create one small in-memory JPEG data URL for each detected crop."""
+    if longest_side_pixels < 1:
+        raise ValueError('Thumbnail longest side must be at least 1 pixel.')
+    if not 1 <= jpeg_quality <= 95:
+        raise ValueError('Thumbnail JPEG quality must be between 1 and 95.')
+
+    thumbnails: list[CropThumbnail] = []
+    for crop in crops:
+        thumbnail = crop.image.convert('RGB').copy()
+        thumbnail.thumbnail(
+            (longest_side_pixels, longest_side_pixels),
+            Image.Resampling.LANCZOS,
+        )
+        image_bytes = BytesIO()
+        thumbnail.save(
+            image_bytes,
+            format='JPEG',
+            quality=jpeg_quality,
+            optimize=True,
+        )
+        encoded = base64.b64encode(image_bytes.getvalue()).decode('ascii')
+        thumbnails.append(
+            CropThumbnail(
+                detection_index=crop.detection_index,
+                data_url=f'data:image/jpeg;base64,{encoded}',
+            )
+        )
+    return tuple(thumbnails)

@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 import requests
@@ -9,8 +10,10 @@ from PIL import Image
 from library.contracts.analysis import BookRead, BoundingBox, CropReadResult
 from library.services.book_reading import (
     CORE_PROMPT,
+    DEFAULT_MAX_WORKERS,
     MAX_BOOKS_PER_CROP,
     MODEL_ID,
+    OPENROUTER_PROVIDER_PREFERENCES,
     MissingApiKeyError,
     read_book_crop,
     read_book_crops,
@@ -32,22 +35,30 @@ def crop(detection_index: int = 1) -> SpineCrop:
 def extraction(
     *,
     crop_type='single_book',
+    region_type='book',
+    region_text=None,
     readability='readable',
     books=None,
     notes='',
 ):
-    return {
-        'crop_type': crop_type,
-        'readability': readability,
-        'books': books
-        if books is not None
-        else [
+    resolved_books = books
+    if resolved_books is None:
+        resolved_books = [
             {
                 'title': 'The Hobbit',
                 'author': 'J. R. R. Tolkien',
                 'language': 'en',
                 'raw_text': 'THE HOBBIT J. R. R. TOLKIEN',
             }
+        ]
+    return {
+        'crop_type': crop_type,
+        'region_type': region_type,
+        'region_text': region_text,
+        'readability': readability,
+        'books': [
+            {'volume': None, **book}
+            for book in resolved_books
         ],
         'notes': notes,
     }
@@ -84,6 +95,8 @@ def successful_result(detection_index: int, *, cost=0.001) -> CropReadResult:
     return CropReadResult(
         detection_index=detection_index,
         crop_type='single_book',
+        region_type='book',
+        region_text=None,
         readability='readable',
         books=(BookRead(title='The Hobbit'),),
         status='ok',
@@ -105,6 +118,7 @@ class BookReadingTests(SimpleTestCase):
 
         self.assertEqual(result.status, 'ok')
         self.assertEqual(result.crop_type, 'single_book')
+        self.assertEqual(result.region_type, 'book')
         self.assertEqual(result.books[0].title, 'The Hobbit')
         self.assertEqual(result.books[0].author, 'J. R. R. Tolkien')
         request = post.call_args.kwargs
@@ -112,11 +126,18 @@ class BookReadingTests(SimpleTestCase):
         self.assertEqual(request['json']['model'], MODEL_ID)
         self.assertFalse(request['json']['stream'])
         self.assertEqual(request['json']['temperature'], 0)
+        self.assertEqual(
+            request['json']['provider'],
+            OPENROUTER_PROVIDER_PREFERENCES,
+        )
         self.assertTrue(request['json']['provider']['require_parameters'])
+        self.assertEqual(request['json']['provider']['sort'], 'latency')
         self.assertTrue(request['json']['response_format']['json_schema']['strict'])
         content = request['json']['messages'][0]['content']
         self.assertEqual(content[0], {'type': 'text', 'text': CORE_PROMPT})
         self.assertTrue(content[1]['image_url']['url'].startswith('data:image/jpeg;base64,'))
+        self.assertIn('non_book', CORE_PROMPT)
+        self.assertIn('volume 21', CORE_PROMPT)
 
     @patch('library.services.book_reading.requests.post')
     def test_valid_korean_result_preserves_unicode(self, post):
@@ -138,6 +159,7 @@ class BookReadingTests(SimpleTestCase):
         self.assertEqual(result.books[0].title, '土地')
         self.assertEqual(result.books[0].author, '박경리')
         self.assertEqual(result.books[0].raw_text, '12土地 박경리')
+        self.assertIsNone(result.books[0].volume)
 
     @patch('library.services.book_reading.requests.post')
     def test_valid_multiple_book_crop(self, post):
@@ -173,6 +195,7 @@ class BookReadingTests(SimpleTestCase):
         post.return_value = openrouter_response(
             extraction(
                 crop_type='unreadable',
+                region_type='uncertain',
                 readability='unreadable',
                 books=[],
                 notes='No usable book text.',
@@ -185,6 +208,128 @@ class BookReadingTests(SimpleTestCase):
         self.assertEqual(result.crop_type, 'unreadable')
         self.assertEqual(result.books, ())
         self.assertEqual(result.notes, 'No usable book text.')
+
+    @patch('library.services.book_reading.requests.post')
+    def test_valid_non_book_region_preserves_visible_text_without_books(self, post):
+        post.return_value = openrouter_response(
+            extraction(
+                crop_type=None,
+                region_type='non_book',
+                region_text='DURABLE AVERY',
+                readability='readable',
+                books=[],
+            )
+        )
+
+        result = read_book_crop(crop(28), api_key='test-key')
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.region_type, 'non_book')
+        self.assertEqual(result.region_text, 'DURABLE AVERY')
+        self.assertEqual(result.books, ())
+
+    @patch('library.services.book_reading.requests.post')
+    def test_non_book_region_cannot_manufacture_book_entries(self, post):
+        post.return_value = openrouter_response(
+            extraction(
+                crop_type=None,
+                region_type='non_book',
+                region_text='DURABLE AVERY',
+            )
+        )
+
+        result = read_book_crop(crop(28), api_key='test-key')
+
+        self.assertEqual(result.status, 'error')
+        self.assertEqual(result.error_code, 'invalid_schema')
+
+    @patch('library.services.book_reading.requests.post')
+    def test_cleans_only_terminal_standalone_korean_author_marker(self, post):
+        post.return_value = openrouter_response(
+            extraction(
+                books=[
+                    {
+                        'title': '엘리어트 파동이론 마스터',
+                        'author': '글렌 닐리 지음',
+                        'volume': None,
+                        'language': 'ko',
+                        'raw_text': '글렌 닐리 지음',
+                    },
+                    {
+                        'title': 'Example',
+                        'author': '한글',
+                        'volume': None,
+                        'language': 'ko',
+                        'raw_text': '한글',
+                    },
+                ],
+                crop_type='multiple_books',
+                region_type='multiple_books',
+            )
+        )
+
+        result = read_book_crop(crop(41), api_key='test-key')
+
+        self.assertEqual(result.books[0].author, '글렌 닐리')
+        self.assertEqual(result.books[1].author, '한글')
+
+    @patch('library.services.book_reading.requests.post')
+    def test_serializes_explicit_volume_separately_from_title(self, post):
+        post.return_value = openrouter_response(
+            extraction(
+                books=[
+                    {
+                        'title': '土地',
+                        'author': '박경리 지음',
+                        'volume': '21',
+                        'language': 'ko',
+                        'raw_text': '21 土地 박경리 지음',
+                    }
+                ]
+            )
+        )
+
+        result = read_book_crop(crop(17), api_key='test-key')
+
+        self.assertEqual(result.books[0].title, '土地')
+        self.assertEqual(result.books[0].volume, '21')
+        self.assertEqual(result.books[0].author, '박경리')
+
+    @patch('library.services.book_reading.requests.post')
+    def test_rejects_edition_and_title_text_as_false_volumes(self, post):
+        post.return_value = openrouter_response(
+            extraction(
+                crop_type='multiple_books',
+                region_type='multiple_books',
+                books=[
+                    {
+                        'title': 'GETTING STARTED IN CHART PATTERNS',
+                        'author': 'BULKOWSKI',
+                        'volume': 'SECOND EDITION',
+                        'language': 'en',
+                        'raw_text': 'SECOND EDITION',
+                    },
+                    {
+                        'title': '1등의 통찰',
+                        'author': None,
+                        'volume': '1',
+                        'language': 'ko',
+                        'raw_text': '1등의 통찰',
+                    },
+                    {
+                        'title': '1984',
+                        'author': 'George Orwell',
+                        'volume': '1984',
+                        'language': 'en',
+                        'raw_text': '1984 George Orwell',
+                    },
+                ],
+            )
+        )
+
+        result = read_book_crop(crop(), api_key='test-key')
+
+        self.assertEqual([book.volume for book in result.books], [None, None, None])
 
     @patch('library.services.book_reading.requests.post')
     def test_http_non_200(self, post):
@@ -314,6 +459,29 @@ class BookReadingTests(SimpleTestCase):
 
 
 class BookReadingBatchTests(SimpleTestCase):
+    @patch(
+        'library.services.book_reading.ThreadPoolExecutor',
+        wraps=ThreadPoolExecutor,
+    )
+    @patch('library.services.book_reading.read_book_crop')
+    def test_default_worker_count_is_bounded_at_eight(
+        self,
+        read_book_crop,
+        thread_pool_executor,
+    ):
+        read_book_crop.side_effect = lambda item, *, api_key: successful_result(
+            item.detection_index
+        )
+
+        result = read_book_crops(
+            tuple(crop(index) for index in range(1, DEFAULT_MAX_WORKERS + 2)),
+            api_key='test-key',
+        )
+
+        self.assertEqual(DEFAULT_MAX_WORKERS, 8)
+        thread_pool_executor.assert_called_once_with(max_workers=8)
+        self.assertEqual(result.attempted_crops, 9)
+
     @patch('library.services.book_reading.read_book_crop')
     def test_isolates_failure_orders_results_and_summarizes(self, read_book_crop):
         def result_for(item, *, api_key):

@@ -88,13 +88,16 @@ class DetectionResult:
 
 Readability = Literal['readable', 'partial', 'unreadable']
 CropType = Literal['single_book', 'multiple_books', 'unreadable']
+RegionType = Literal['book', 'multiple_books', 'non_book', 'uncertain']
 ReaderStatus = Literal['ok', 'error']
+ReviewStatus = Literal['high_confidence', 'review_required', 'unmatched']
 
 
 @dataclass(frozen=True)
 class BookRead:
     title: str | None
     author: str | None = None
+    volume: str | None = None
     raw_text: str | None = None
     language: str | None = None
     readability: Readability = 'readable'
@@ -103,6 +106,7 @@ class BookRead:
         return {
             'title': self.title,
             'author': self.author,
+            'volume': self.volume,
             'raw_text': self.raw_text,
             'language': self.language,
             'readability': self.readability,
@@ -113,6 +117,8 @@ class BookRead:
 class CropReadResult:
     detection_index: int
     crop_type: CropType | None
+    region_type: RegionType | None
+    region_text: str | None
     readability: Readability | None
     books: tuple[BookRead, ...]
     status: ReaderStatus
@@ -131,6 +137,8 @@ class CropReadResult:
         return {
             'detection_index': self.detection_index,
             'crop_type': self.crop_type,
+            'region_type': self.region_type,
+            'region_text': self.region_text,
             'readability': self.readability,
             'book_count': len(self.books),
             'status': self.status,
@@ -240,18 +248,162 @@ class MatchResult:
 
 
 @dataclass(frozen=True)
+class ReviewDecision:
+    status: ReviewStatus
+    reasons: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'status': self.status,
+            'reasons': list(self.reasons),
+        }
+
+
+@dataclass(frozen=True)
 class AnalyzedBook:
     detection_index: int
     book_index: int
-    read: BookRead
+    read: BookRead | None
     match: MatchResult | None
+    review: ReviewDecision
+    suggested_match: MatchCandidate | None = None
+    crop_type: CropType | None = None
+    region_type: RegionType | None = None
+    region_text: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
             'detection_index': self.detection_index,
             'book_index': self.book_index,
-            'read': self.read.as_dict(),
+            'read': self.read.as_dict() if self.read else None,
             'match': self.match.as_dict() if self.match else None,
+            'suggested_match': (
+                self.suggested_match.as_dict() if self.suggested_match else None
+            ),
+            'crop_type': self.crop_type,
+            'region_type': self.region_type,
+            'region_text': self.region_text,
+            'review': self.review.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class ReviewItem:
+    item_id: str
+    representative: AnalyzedBook
+    source_detection_indices: tuple[int, ...]
+    duplicate_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        serialized = self.representative.as_dict()
+        serialized.update(
+            {
+                'id': self.item_id,
+                'source_detection_indices': list(self.source_detection_indices),
+                'duplicate_count': self.duplicate_count,
+            }
+        )
+        return serialized
+
+
+@dataclass(frozen=True)
+class ReviewVolumeBucket:
+    bucket_id: str
+    volume: str
+    representative_item_id: str
+    items: tuple[ReviewItem, ...]
+    source_detection_indices: tuple[int, ...]
+    item_count: int
+    total_entries: int
+    detection_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'id': self.bucket_id,
+            'volume': self.volume,
+            'representative_item_id': self.representative_item_id,
+            'items': [item.as_dict() for item in self.items],
+            'source_detection_indices': list(self.source_detection_indices),
+            'item_count': self.item_count,
+            'total_entries': self.total_entries,
+            'detection_count': self.detection_count,
+        }
+
+
+@dataclass(frozen=True)
+class OrdinaryReviewGroup:
+    group_id: str
+    title: str | None
+    author: str | None
+    review_status: ReviewStatus
+    representative_item_id: str
+    items: tuple[ReviewItem, ...]
+    source_detection_indices: tuple[int, ...]
+    item_count: int
+    total_entries: int
+    detection_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'id': self.group_id,
+            'group_type': 'ordinary',
+            'title': self.title,
+            'author': self.author,
+            'review_status': self.review_status,
+            'representative_item_id': self.representative_item_id,
+            'items': [item.as_dict() for item in self.items],
+            'source_detection_indices': list(self.source_detection_indices),
+            'item_count': self.item_count,
+            'total_entries': self.total_entries,
+            'detection_count': self.detection_count,
+        }
+
+
+@dataclass(frozen=True)
+class SeriesReviewGroup:
+    group_id: str
+    title: str | None
+    author: str | None
+    review_status: ReviewStatus
+    representative_item_id: str
+    volumes: tuple[ReviewVolumeBucket, ...]
+    unknown_volume_items: tuple[ReviewItem, ...]
+    source_detection_indices: tuple[int, ...]
+    item_count: int
+    total_entries: int
+    detection_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'id': self.group_id,
+            'group_type': 'series',
+            'title': self.title,
+            'author': self.author,
+            'review_status': self.review_status,
+            'representative_item_id': self.representative_item_id,
+            'volumes': [volume.as_dict() for volume in self.volumes],
+            'unknown_volume_items': [
+                item.as_dict() for item in self.unknown_volume_items
+            ],
+            'source_detection_indices': list(self.source_detection_indices),
+            'item_count': self.item_count,
+            'total_entries': self.total_entries,
+            'detection_count': self.detection_count,
+        }
+
+
+ReviewGroup = OrdinaryReviewGroup | SeriesReviewGroup
+
+
+@dataclass(frozen=True)
+class CropThumbnail:
+    detection_index: int
+    data_url: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'detection_index': self.detection_index,
+            'data_url': self.data_url,
         }
 
 
@@ -261,3 +413,6 @@ class AnalysisPipelineResult:
     hosted_reader: ReaderBatchResult
     books: tuple[AnalyzedBook, ...]
     warnings: tuple[str, ...]
+    review_items: tuple[ReviewItem, ...] = ()
+    review_groups: tuple[ReviewGroup, ...] = ()
+    crop_thumbnails: tuple[CropThumbnail, ...] = ()

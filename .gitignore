@@ -14,6 +14,7 @@ backend/media/
 
 # Expo / Node
 node_modules/
+.npm-cache/
 .expo/
 dist/
 web-build/

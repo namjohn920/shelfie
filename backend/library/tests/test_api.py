@@ -13,15 +13,20 @@ from library.contracts.analysis import (
     BookRead,
     BoundingBox,
     CatalogEntry,
+    CropThumbnail,
     CropReadResult,
     DetectionResult,
     DetectorTiming,
     MatchCandidate,
     MatchResult,
     ReaderBatchResult,
+    ReviewDecision,
+    ReviewGroup,
+    ReviewItem,
     SpineDetection,
 )
 from library.services.book_reading import MODEL_ID, MissingApiKeyError
+from library.services.review_grouping import group_review_items
 from library.services.spine_detection import SpineDetectionError
 
 
@@ -50,6 +55,9 @@ def fake_analysis_result(
     detections: tuple[SpineDetection, ...] = (),
     crop_results: tuple[CropReadResult, ...] = (),
     books: tuple[AnalyzedBook, ...] = (),
+    review_items: tuple[ReviewItem, ...] = (),
+    review_groups: tuple[ReviewGroup, ...] | None = None,
+    crop_thumbnails: tuple[CropThumbnail, ...] = (),
     warnings: tuple[str, ...] = (),
 ) -> AnalysisPipelineResult:
     successful = sum(result.status == 'ok' for result in crop_results)
@@ -66,6 +74,13 @@ def fake_analysis_result(
         ),
         books=books,
         warnings=warnings,
+        review_items=review_items,
+        review_groups=(
+            group_review_items(review_items)
+            if review_groups is None
+            else review_groups
+        ),
+        crop_thumbnails=crop_thumbnails,
     )
 
 
@@ -142,6 +157,9 @@ class ShelfieApiTests(APITestCase):
                     'crop_results': [],
                 },
                 'books': [],
+                'review_items': [],
+                'review_groups': [],
+                'crop_thumbnails': [],
                 'warnings': [],
             },
         )
@@ -182,6 +200,31 @@ class ShelfieApiTests(APITestCase):
         )
 
     @patch('library.api.analyze.analyze_image')
+    def test_analyze_serializes_one_thumbnail_per_detection(self, analyze_image):
+        detections = (
+            SpineDetection(1, BoundingBox(0, 0, 20, 30), 0.9),
+            SpineDetection(2, BoundingBox(20, 0, 40, 30), 0.8),
+        )
+        analyze_image.return_value = fake_analysis_result(
+            detections=detections,
+            crop_thumbnails=(
+                CropThumbnail(1, 'data:image/jpeg;base64,b25l'),
+                CropThumbnail(2, 'data:image/jpeg;base64,dHdv'),
+            ),
+        )
+
+        response = self.client.post(
+            reverse('library:analyze'),
+            {'image': uploaded_jpeg()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        thumbnails = response.json()['crop_thumbnails']
+        self.assertEqual([item['detection_index'] for item in thumbnails], [1, 2])
+        self.assertEqual(len({item['detection_index'] for item in thumbnails}), 2)
+
+    @patch('library.api.analyze.analyze_image')
     def test_partial_hosted_failure_returns_successful_books(self, analyze_image):
         readable = BookRead(
             title='The Hobbit',
@@ -192,6 +235,8 @@ class ShelfieApiTests(APITestCase):
         success = CropReadResult(
             detection_index=1,
             crop_type='single_book',
+            region_type='book',
+            region_text=None,
             readability='readable',
             books=(readable,),
             status='ok',
@@ -205,6 +250,8 @@ class ShelfieApiTests(APITestCase):
         failure = CropReadResult(
             detection_index=2,
             crop_type=None,
+            region_type=None,
+            region_text=None,
             readability=None,
             books=(),
             status='error',
@@ -242,9 +289,23 @@ class ShelfieApiTests(APITestCase):
             margin=28.0,
             candidate_floor=60.0,
         )
+        analyzed_book = AnalyzedBook(
+            1,
+            0,
+            readable,
+            match,
+            ReviewDecision('high_confidence', ('high_confidence',)),
+            suggested_match=best_candidate,
+            crop_type='single_book',
+            region_type='book',
+        )
         analyze_image.return_value = fake_analysis_result(
             crop_results=(success, failure),
-            books=(AnalyzedBook(1, 0, readable, match),),
+            books=(analyzed_book,),
+            review_items=(
+                ReviewItem('review-1-0', analyzed_book, (1,), 1),
+            ),
+            crop_thumbnails=(CropThumbnail(1, 'data:image/jpeg;base64,dGVzdA=='),),
             warnings=('Detection 2: The hosted reader timed out for this crop.',),
         )
 
@@ -262,6 +323,15 @@ class ShelfieApiTests(APITestCase):
         self.assertEqual(body['books'][0]['detection_index'], 1)
         self.assertEqual(body['books'][0]['book_index'], 0)
         self.assertEqual(body['books'][0]['read']['title'], 'The Hobbit')
+        self.assertIsNone(body['books'][0]['read']['volume'])
+        self.assertEqual(
+            body['books'][0]['suggested_match']['catalog']['catalog_id'],
+            'CAT009',
+        )
+        self.assertEqual(
+            body['books'][0]['review'],
+            {'status': 'high_confidence', 'reasons': ['high_confidence']},
+        )
         serialized_match = body['books'][0]['match']
         self.assertEqual(
             serialized_match['best_candidate']['catalog']['catalog_id'],
@@ -277,10 +347,84 @@ class ShelfieApiTests(APITestCase):
         self.assertEqual(serialized_match['second_score'], 72.0)
         self.assertEqual(serialized_match['margin'], 28.0)
         self.assertEqual(serialized_match['candidate_floor'], 60.0)
+        self.assertEqual(body['review_items'][0]['id'], 'review-1-0')
+        self.assertEqual(body['review_items'][0]['source_detection_indices'], [1])
+        self.assertEqual(body['review_items'][0]['duplicate_count'], 1)
+        self.assertEqual(body['review_groups'][0]['group_type'], 'ordinary')
+        self.assertEqual(
+            body['review_groups'][0]['representative_item_id'],
+            'review-1-0',
+        )
+        self.assertEqual(
+            body['review_groups'][0]['items'][0]['id'],
+            'review-1-0',
+        )
+        self.assertEqual(
+            body['crop_thumbnails'],
+            [{'detection_index': 1, 'data_url': 'data:image/jpeg;base64,dGVzdA=='}],
+        )
         self.assertEqual(
             body['warnings'],
             ['Detection 2: The hosted reader timed out for this crop.'],
         )
+
+    @patch('library.api.analyze.analyze_image')
+    def test_raw_match_remains_when_suggested_match_is_null(self, analyze_image):
+        read = BookRead('GETTING STARTED IN CHART PATTERNS', 'BULKOWSKI')
+        candidate = MatchCandidate(
+            entry=CatalogEntry('CAT082', 'Quiet', 'Susan Cain'),
+            matched_title='Quiet',
+            matched_author='Susan Cain',
+            title_evidence='canonical',
+            title_score=56.1,
+            author_score=42.0,
+            combined_score=69.3,
+        )
+        match = MatchResult(
+            candidate,
+            None,
+            56.1,
+            42.0,
+            69.3,
+            68.4,
+            0.9,
+            60.0,
+        )
+        analyzed_book = AnalyzedBook(
+            34,
+            0,
+            read,
+            match,
+            ReviewDecision(
+                'review_required',
+                (
+                    'low_score',
+                    'small_margin',
+                    'candidate_not_reliable_enough_to_show',
+                ),
+            ),
+            region_type='book',
+        )
+        analyze_image.return_value = fake_analysis_result(
+            books=(analyzed_book,),
+            review_items=(
+                ReviewItem('review-34-0', analyzed_book, (34,), 1),
+            ),
+        )
+
+        response = self.client.post(
+            reverse('library:analyze'),
+            {'image': uploaded_jpeg()},
+            format='multipart',
+        )
+
+        body = response.json()
+        self.assertEqual(
+            body['books'][0]['match']['best_candidate']['catalog']['title'],
+            'Quiet',
+        )
+        self.assertIsNone(body['books'][0]['suggested_match'])
+        self.assertIsNone(body['review_items'][0]['suggested_match'])
 
     @patch('library.api.analyze.analyze_image')
     def test_analyze_translates_detector_failure(self, analyze_image):
